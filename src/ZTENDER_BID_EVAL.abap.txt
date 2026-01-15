@@ -1,0 +1,116 @@
+*&---------------------------------------------------------------------*
+*& Report ZTENDER_BID_EVAL
+*&---------------------------------------------------------------------*
+*& Program Name : ZTENDER_BID_EVAL
+*& Description  : Bid Evaluation & L1 Selection (ALV)
+*&---------------------------------------------------------------------*
+REPORT ZTENDER_BID_EVAL.
+
+
+*---------------------------------------------------------------------*
+* SELECTION SCREEN
+*---------------------------------------------------------------------*
+PARAMETERS: p_tender TYPE ztender_hdr-tender_id OBLIGATORY.
+
+*---------------------------------------------------------------------*
+* DATA DECLARATIONS
+*---------------------------------------------------------------------*
+
+"Internal table for vendor bids
+DATA: lt_vendor TYPE TABLE OF ztender_vendor,
+      ls_vendor TYPE ztender_vendor.
+
+"Work area for L1 logic
+DATA: lv_min_price TYPE ztender_vendor-price,
+      lv_l1_vendor TYPE ztender_vendor-lifnr.
+
+*---------------------------------------------------------------------*
+* START OF SELECTION
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*---------------------------------------------------------------------*
+* STEP 1: CHECK TENDER EXISTS
+*---------------------------------------------------------------------*
+SELECT SINGLE tender_id
+  FROM ztender_hdr
+  INTO @DATA(lv_chk)
+ WHERE tender_id = @p_tender.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Tender not found' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* STEP 2: READ VENDOR BIDS FOR TENDER
+*---------------------------------------------------------------------*
+SELECT *
+  FROM ztender_vendor
+  INTO TABLE lt_vendor
+ WHERE tender_id = p_tender
+   AND bid_status = 'QUALIFIED'.
+
+IF sy-subrc <> 0.
+  MESSAGE 'No qualified vendors found' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* STEP 3: FIND L1 (LOWEST PRICE)
+*---------------------------------------------------------------------*
+CLEAR lv_min_price.
+
+LOOP AT lt_vendor INTO ls_vendor.
+
+  IF lv_min_price IS INITIAL OR ls_vendor-price < lv_min_price.
+    lv_min_price = ls_vendor-price.
+    lv_l1_vendor = ls_vendor-lifnr.
+  ENDIF.
+
+ENDLOOP.
+
+*---------------------------------------------------------------------*
+* STEP 4: UPDATE BID STATUS
+*---------------------------------------------------------------------*
+LOOP AT lt_vendor INTO ls_vendor.
+
+  IF ls_vendor-lifnr = lv_l1_vendor.
+    ls_vendor-bid_status = 'L1'.
+  ELSE.
+    ls_vendor-bid_status = 'QUALIFIED'.
+  ENDIF.
+
+  UPDATE ztender_vendor FROM ls_vendor.
+
+ENDLOOP.
+
+COMMIT WORK.
+
+*---------------------------------------------------------------------*
+* STEP 5: DISPLAY ALV REPORT
+*---------------------------------------------------------------------*
+PERFORM display_alv.
+
+*---------------------------------------------------------------------*
+* FORM TO DISPLAY ALV
+*---------------------------------------------------------------------*
+FORM display_alv.
+
+  DATA: lo_alv TYPE REF TO cl_salv_table.
+
+  TRY.
+      cl_salv_table=>factory(
+        IMPORTING
+          r_salv_table = lo_alv
+        CHANGING
+          t_table      = lt_vendor ).
+
+      lo_alv->get_functions( )->set_all( abap_true ).
+      lo_alv->get_columns( )->set_optimize( abap_true ).
+
+      lo_alv->display( ).
+
+    CATCH cx_salv_msg.
+      MESSAGE 'Error displaying ALV' TYPE 'E'.
+  ENDTRY.
+
+ENDFORM.

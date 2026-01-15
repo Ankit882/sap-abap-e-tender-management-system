@@ -1,0 +1,125 @@
+*&---------------------------------------------------------------------*
+*& Report ZPR_TO_TENDER
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+
+*---------------------------------------------------------------------*
+* Program Name : ZPR_TO_TENDER
+* Author       : Aniket
+* Description  : Create Tender from Purchase Requisition
+*---------------------------------------------------------------------*
+
+REPORT ZPR_TO_TENDER.
+
+*---------------------------------------------------------------------*
+* SELECTION SCREEN
+*---------------------------------------------------------------------*
+* User PR number enter
+*---------------------------------------------------------------------*
+PARAMETERS: p_pr_no TYPE eban-banfn OBLIGATORY.
+
+*---------------------------------------------------------------------*
+* DATA DECLARATIONS
+*---------------------------------------------------------------------*
+
+DATA: ls_hdr  TYPE ztender_hdr,
+      ls_item TYPE ztender_item.
+
+"Internal table to store PR items
+DATA: lt_eban TYPE TABLE OF eban,
+      ls_eban TYPE eban.
+
+"Tender ID variable
+DATA: lv_tender_id TYPE ztender_hdr-tender_id.
+
+*---------------------------------------------------------------------*
+* START OF SELECTION
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*---------------------------------------------------------------------*
+* STEP 1: READ PR DATA FROM EBAN
+*---------------------------------------------------------------------*
+DATA lv_existing_tender TYPE ztender_hdr-tender_id.
+
+SELECT SINGLE tender_id
+  FROM ztender_hdr
+  INTO lv_existing_tender
+ WHERE pr_no = p_pr_no.
+
+IF sy-subrc = 0.
+  MESSAGE |Tender { lv_existing_tender } already exists for this PR| TYPE 'E'.
+ENDIF.
+
+
+*---------------------------------------------------------------------*
+* STEP 2: GENERATE UNIQUE TENDER ID
+*---------------------------------------------------------------------*
+* Format: TND-YYYYMMDD-HHMMSS
+*---------------------------------------------------------------------*
+lv_tender_id = |TND-{ sy-datum }-{ sy-uzeit }|.
+
+*---------------------------------------------------------------------*
+* STEP 3: INSERT DATA INTO TENDER HEADER TABLE
+*---------------------------------------------------------------------*
+CLEAR ls_hdr.
+ls_hdr-tender_id  = lv_tender_id.
+ls_hdr-pr_no      = p_pr_no.
+ls_hdr-doc_type   = 'RFQ'.
+ls_hdr-status     = 'CREATED'.
+ls_hdr-created_by = sy-uname.
+ls_hdr-created_on = sy-datum.
+ls_hdr-changed_by = sy-uname.
+ls_hdr-changed_on = sy-datum.
+
+INSERT ztender_hdr FROM ls_hdr.
+
+DATA ls_audit TYPE ztender_audit.
+
+CLEAR ls_audit.
+ls_audit-tender_id = lv_tender_id.
+ls_audit-action    = 'TENDER_CREATED'.
+ls_audit-user_name = sy-uname.
+GET TIME STAMP FIELD ls_audit-action_dt.
+
+INSERT ztender_audit FROM ls_audit.
+
+
+IF sy-subrc <> 0.
+  MESSAGE 'Error while inserting Tender Header' TYPE 'E'.
+ENDIF.
+
+
+*---------------------------------------------------------------------*
+* STEP 4: INSERT PR ITEMS INTO TENDER ITEM TABLE
+*---------------------------------------------------------------------*
+LOOP AT lt_eban INTO ls_eban.
+
+    CLEAR ls_item.
+ls_item-tender_id     = lv_tender_id.
+ls_item-item_no       = ls_eban-bnfpo.
+ls_item-matnr         = ls_eban-matnr.
+ls_item-meins         = ls_eban-meins.
+ls_item-menge         = ls_eban-menge.
+ls_item-delivery_date = ls_eban-lfdat.  "Correct PR delivery date
+
+INSERT ztender_item FROM ls_item.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Error inserting Tender Item' TYPE 'E'.
+ENDIF.
+
+
+
+ENDLOOP.
+
+*---------------------------------------------------------------------*
+* STEP 5: COMMIT WORK
+*---------------------------------------------------------------------*
+COMMIT WORK.
+
+*---------------------------------------------------------------------*
+* STEP 6: SUCCESS MESSAGE
+*---------------------------------------------------------------------*
+MESSAGE |Tender { lv_tender_id } created successfully| TYPE 'S'.

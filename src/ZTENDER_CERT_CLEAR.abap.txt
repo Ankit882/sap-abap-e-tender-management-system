@@ -1,0 +1,73 @@
+REPORT ztender_cert_clear.
+
+*---------------------------------------------------------------------*
+* Selection Screen
+*---------------------------------------------------------------------*
+PARAMETERS:
+  p_tender TYPE ztender_hdr-tender_id OBLIGATORY,
+  p_type   TYPE char20 OBLIGATORY.   "QUALITY / COMPLIANCE
+
+*---------------------------------------------------------------------*
+* Data Declarations
+*---------------------------------------------------------------------*
+DATA:
+  ls_cert TYPE ztender_cert,
+  ls_hdr  TYPE ztender_hdr.
+
+*---------------------------------------------------------------------*
+* Step 1: Validate Tender
+*---------------------------------------------------------------------*
+SELECT SINGLE *
+  FROM ztender_hdr
+  INTO @ls_hdr
+ WHERE tender_id = @p_tender.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Invalid Tender ID' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 2: Validate Certificate Type
+*---------------------------------------------------------------------*
+IF p_type <> 'QUALITY'
+   AND p_type <> 'COMPLIANCE'.
+  MESSAGE 'Invalid Certificate Type' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 3: Insert Certificate Clearance
+*---------------------------------------------------------------------*
+CLEAR ls_cert.
+
+ls_cert-tender_id    = p_tender.
+ls_cert-cert_id      = |CERT-{ sy-datum }-{ sy-uzeit }|.
+ls_cert-cert_type    = p_type.
+ls_cert-cert_status  = 'APPROVED'.
+ls_cert-approved_by  = sy-uname.
+ls_cert-approved_on  = sy-datum.
+
+INSERT ztender_cert FROM ls_cert.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Certificate clearance failed' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 4: Audit Log
+*---------------------------------------------------------------------*
+DATA ls_audit TYPE ztender_audit.
+
+CLEAR ls_audit.
+ls_audit-tender_id = p_tender.
+ls_audit-action    = 'CERT_APPROVED'.
+ls_audit-user_name = sy-uname.
+GET TIME STAMP FIELD ls_audit-action_dt.
+
+INSERT ztender_audit FROM ls_audit.
+
+*---------------------------------------------------------------------*
+* Step 5: Commit
+*---------------------------------------------------------------------*
+COMMIT WORK.
+
+MESSAGE 'Certificate cleared successfully' TYPE 'S'.
