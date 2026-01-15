@@ -1,33 +1,41 @@
 # SAP ABAP – E-Tender Management System
 
-## Project Overview
-The E-Tender Management System is an end-to-end procurement automation solution
-developed using SAP ABAP and MM module.
+## Overview
+This project is an end-to-end E-Tender Management System developed using
+SAP ABAP and SAP MM module to automate the procurement lifecycle.
 
-It covers the complete lifecycle from Purchase Requisition to Tender,
-Vendor Evaluation, Purchase Order, Goods Receipt, Invoice, and Certification clearance.
+The solution covers Purchase Requisition to Tender creation, Vendor
+evaluation, Purchase Order creation, Goods Receipt, Invoice processing,
+and Certification clearance with complete audit tracking.
 
-## Business Flow
+## Business Process Flow
 PR → Tender → Vendor Mapping → Bid Evaluation (L1)
 → PO Creation → GR → Invoice → Certification Clearance
 
 ## Custom Tables
-- ZTENDER_HDR – Tender Header
-- ZTENDER_ITEM – Tender Items
-- ZTENDER_VENDOR – Vendor Bids
-- ZTENDER_AUDIT – Audit Log
-- ZTENDER_GR – Goods Receipt
-- ZTENDER_INVOICE – Invoice Data
-- ZTENDER_CERT – Compliance Clearance
+- ZTENDER_HDR – Tender header data
+- ZTENDER_ITEM – Tender line items
+- ZTENDER_VENDOR – Vendor participation & bids
+- ZTENDER_AUDIT – Audit trail
+- ZTENDER_GR – Goods receipt confirmation
+- ZTENDER_INVOICE – Invoice records
+- ZTENDER_CERT – Certification clearance
 
 ## ABAP Programs
-- ZPR_TO_TENDER – Tender creation from PR
+- ZPR_TO_TENDER – Create Tender from PR
 - ZTENDER_VENDOR_SELECT – Vendor mapping
-- ZTENDER_BID_EVAL – L1 bid evaluation
+- ZTENDER_BID_EVAL – Bid evaluation and L1 selection
 - ZTENDER_PO_CREATE – PO creation using BAPI_PO_CREATE1
-- ZTENDER_GR_CONFIRM – Goods receipt
+- ZTENDER_GR_CONFIRM – Goods receipt confirmation
 - ZTENDER_INVOICE_CREATE – Invoice creation
-- ZTENDER_CERT_CLEAR – Certification clearance
+- ZTENDER_CERT_CLEAR – Compliance certification clearance
+
+## Key Features
+- End-to-end procurement automation
+- Vendor bid evaluation with ALV reporting
+- Purchase Order creation via standard BAPI
+- Complete audit logging
+- Validation and error handling
 
 ## Technologies Used
 - SAP ABAP
@@ -35,11 +43,6 @@ PR → Tender → Vendor Mapping → Bid Evaluation (L1)
 - Custom Z Tables
 - ALV Reports
 - BAPI_PO_CREATE1
-
-## Audit & Validation
-- Complete audit trail for every action
-- Mandatory field validation
-- BAPI return message handling
 
 ## Author
 Ankit Raj  
