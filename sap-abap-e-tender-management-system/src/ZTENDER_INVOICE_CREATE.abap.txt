@@ -1,0 +1,85 @@
+REPORT ZTENDER_INVOICE_CREATE.
+
+*---------------------------------------------------------------------*
+* Selection Screen
+*---------------------------------------------------------------------*
+PARAMETERS: p_tender TYPE ztender_hdr-tender_id OBLIGATORY.
+
+*---------------------------------------------------------------------*
+* Data Declarations
+*---------------------------------------------------------------------*
+DATA: ls_vendor  TYPE ztender_vendor,
+      ls_invoice TYPE ztender_invoice,
+      lv_inv_id  TYPE char30,
+      lv_po      TYPE ebeln.
+
+*---------------------------------------------------------------------*
+* Step 1: Get L1 Vendor (FINAL SELECTED VENDOR)
+*---------------------------------------------------------------------*
+SELECT SINGLE *
+  FROM ztender_vendor
+  INTO ls_vendor
+ WHERE tender_id = p_tender
+   AND bid_status = 'L1'.
+
+IF sy-subrc <> 0.
+  MESSAGE 'L1 vendor not found for this Tender' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 2: Get PO Number from Tender Header
+*---------------------------------------------------------------------*
+SELECT SINGLE po_no
+  FROM ztender_hdr
+  INTO lv_po
+ WHERE tender_id = p_tender.
+
+IF lv_po IS INITIAL.
+  MESSAGE 'PO not created for this Tender' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 3: Generate Invoice ID
+*---------------------------------------------------------------------*
+lv_inv_id = |INV-{ sy-datum }-{ sy-uzeit }|.
+
+*---------------------------------------------------------------------*
+* Step 4: Create Invoice Record
+*---------------------------------------------------------------------*
+CLEAR ls_invoice.
+
+ls_invoice-invoice_id = lv_inv_id.
+ls_invoice-tender_id  = p_tender.
+ls_invoice-po_no      = lv_po.
+ls_invoice-lifnr      = ls_vendor-lifnr.
+ls_invoice-amount     = ls_vendor-price.
+ls_invoice-curr       = 'INR'.
+ls_invoice-status     = 'CREATED'.
+ls_invoice-created_by = sy-uname.
+ls_invoice-created_on = sy-datum.
+
+INSERT ztender_invoice FROM ls_invoice.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Invoice creation failed' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 5: Audit Log
+*---------------------------------------------------------------------*
+DATA ls_audit TYPE ztender_audit.
+
+CLEAR ls_audit.
+ls_audit-tender_id = p_tender.
+ls_audit-action    = 'INVOICE_CREATED'.
+ls_audit-user_name = sy-uname.
+GET TIME STAMP FIELD ls_audit-action_dt.
+
+INSERT ztender_audit FROM ls_audit.
+
+*---------------------------------------------------------------------*
+* Step 6: Commit & Success Message
+*---------------------------------------------------------------------*
+COMMIT WORK.
+
+MESSAGE |Invoice { lv_inv_id } created successfully| TYPE 'S'.

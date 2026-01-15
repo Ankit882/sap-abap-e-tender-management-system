@@ -1,0 +1,66 @@
+*&---------------------------------------------------------------------*
+*& Report ZTENDER_GR_CONFIRM
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZTENDER_GR_CONFIRM.
+
+PARAMETERS: p_tender TYPE ztender_hdr-tender_id OBLIGATORY.
+
+DATA: lv_po TYPE ebeln,
+      lv_gr TYPE char20,
+      ls_gr TYPE ztender_gr,
+      ls_audit TYPE ztender_audit.
+
+*---------------------------------------------------------------------*
+* Step 1: Check Tender & PO
+*---------------------------------------------------------------------*
+SELECT SINGLE po_no
+  FROM ztender_hdr
+  INTO lv_po
+ WHERE tender_id = p_tender.
+
+IF lv_po IS INITIAL.
+  MESSAGE 'PO not found. Cannot confirm GR' TYPE 'E'.
+ENDIF.
+
+*---------------------------------------------------------------------*
+* Step 2: Generate GR No
+*---------------------------------------------------------------------*
+lv_gr = |GR-{ sy-datum }-{ sy-uzeit }|.
+
+*---------------------------------------------------------------------*
+* Step 3: Insert GR Record
+*---------------------------------------------------------------------*
+CLEAR ls_gr.
+ls_gr-tender_id  = p_tender.
+ls_gr-po_no      = lv_po.
+ls_gr-gr_no      = lv_gr.
+ls_gr-gr_date    = sy-datum.
+ls_gr-gr_status  = 'RECEIVED'.
+ls_gr-created_by = sy-uname.
+ls_gr-created_on = sy-datum.
+
+INSERT ztender_gr FROM ls_gr.
+
+*---------------------------------------------------------------------*
+* Step 4: Update Tender Status
+*---------------------------------------------------------------------*
+UPDATE ztender_hdr
+   SET status = 'GR_CONF'
+ WHERE tender_id = p_tender.
+
+*---------------------------------------------------------------------*
+* Step 5: Audit Log
+*---------------------------------------------------------------------*
+CLEAR ls_audit.
+ls_audit-tender_id = p_tender.
+ls_audit-action    = 'GR_CONFIRMED'.
+ls_audit-user_name = sy-uname.
+GET TIME STAMP FIELD ls_audit-action_dt.
+
+INSERT ztender_audit FROM ls_audit.
+
+COMMIT WORK.
+
+MESSAGE |GR { lv_gr } confirmed successfully| TYPE 'S'.

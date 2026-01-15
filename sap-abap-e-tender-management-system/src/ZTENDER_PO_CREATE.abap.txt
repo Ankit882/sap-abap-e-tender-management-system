@@ -1,0 +1,184 @@
+*&---------------------------------------------------------------------*
+*& Report ZTENDER_PO_CREATE
+*&---------------------------------------------------------------------*
+*& Description : Create PO using Service / Cost Center approach
+*&---------------------------------------------------------------------*
+REPORT ztender_po_create.
+
+*---------------------------------------------------------------------*
+* Selection Screen
+*---------------------------------------------------------------------*
+PARAMETERS: p_tender TYPE ztender_hdr-tender_id OBLIGATORY.
+
+*---------------------------------------------------------------------*
+* Data Declarations
+*---------------------------------------------------------------------*
+
+"Vendor (L1)
+DATA: ls_vendor TYPE ztender_vendor.
+
+"Tender items
+DATA: lt_items TYPE TABLE OF ztender_item,
+      ls_item  TYPE ztender_item.
+
+"BAPI Header
+DATA: ls_poheader  TYPE bapimepoheader,
+      ls_poheaderx TYPE bapimepoheaderx.
+
+"BAPI Item
+DATA: lt_poitem  TYPE TABLE OF bapimepoitem,
+      ls_poitem  TYPE bapimepoitem,
+      lt_poitemx TYPE TABLE OF bapimepoitemx,
+      ls_poitemx TYPE bapimepoitemx.
+
+"Return messages
+DATA: lt_return TYPE TABLE OF bapiret2,
+      lv_po     TYPE bapimepoheader-po_number,
+      lv_error  TYPE abap_bool VALUE abap_false.
+
+*---------------------------------------------------------------------*
+* Start of Selection
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+*---------------------------------------------------------------------*
+* STEP 1: Get L1 Vendor
+*---------------------------------------------------------------------*
+SELECT SINGLE *
+  INTO ls_vendor
+  FROM ztender_vendor
+ WHERE tender_id = p_tender
+   AND bid_status = 'L1'.
+
+IF sy-subrc <> 0.
+  MESSAGE 'L1 vendor not found for tender' TYPE 'E'.
+ENDIF.
+
+
+*---------------------------------------------------------------------*
+* STEP 2: Get Tender Items
+*---------------------------------------------------------------------*
+SELECT *
+  INTO TABLE lt_items
+  FROM ztender_item
+ WHERE tender_id = p_tender.
+
+IF lt_items IS INITIAL.
+  MESSAGE 'No tender items found' TYPE 'E'.
+ENDIF.
+
+
+*---------------------------------------------------------------------*
+* STEP 3: Prepare PO Header (STANDARD VALUES)
+*---------------------------------------------------------------------*
+CLEAR ls_poheader.
+
+ls_poheader-doc_type  = 'CUNB'.
+ls_poheader-vendor    = ls_vendor-lifnr.
+ls_poheader-comp_code = 'C300'.
+ls_poheader-purch_org = 'CPO'.
+ls_poheader-pur_group = 'CPG'.
+ls_poheader-doc_date  = sy-datum.
+ls_poheader-currency  = 'INR'.
+
+
+ls_poheaderx-doc_type  = 'X'.
+ls_poheaderx-vendor    = 'X'.
+ls_poheaderx-purch_org = 'X'.
+ls_poheaderx-pur_group = 'X'.
+ls_poheaderx-comp_code = 'X'.
+ls_poheaderx-currency  = 'X'.
+ls_poheaderx-doc_date  = 'X'.
+
+*---------------------------------------------------------------------*
+* STEP 4: Prepare PO Items (SERVICE / COST CENTER)
+*---------------------------------------------------------------------*
+DATA lv_item_no TYPE ekpo-ebelp VALUE 10.
+
+LOOP AT lt_items INTO ls_item.
+
+  CLEAR: ls_poitem, ls_poitemx.
+
+  ls_poitem-po_item    = lv_item_no.
+  ls_poitem-material   = ls_item-matnr.
+  ls_poitem-plant      = 'CUP1'.
+  ls_poitem-quantity   = ls_item-menge.
+  ls_poitem-po_unit    = ls_item-meins.
+  ls_poitem-net_price  = ls_vendor-price.
+  ls_poitem-price_unit = 1.
+
+  ls_poitem-gl_account = '400000'.
+  ls_poitemx-gl_account = 'X'.
+
+
+  APPEND ls_poitem TO lt_poitem.
+
+
+    ls_poitemx-po_item     = lv_item_no.
+  ls_poitemx-po_itemx   = 'X'.
+  ls_poitemx-material   = 'X'.
+  ls_poitemx-plant      = 'X'.
+  ls_poitemx-quantity   = 'X'.
+  ls_poitemx-po_unit    = 'X'.
+  ls_poitemx-net_price  = 'X'.
+  ls_poitemx-price_unit = 'X'.
+  ls_poitemx-acctasscat = 'X'.
+  ls_poitemx-costcenter = 'X'.
+
+  APPEND ls_poitemx TO lt_poitemx.
+
+  lv_item_no = lv_item_no + 10.
+
+ENDLOOP.
+
+
+
+*---------------------------------------------------------------------*
+* STEP 5: Call BAPI
+*---------------------------------------------------------------------*
+CALL FUNCTION 'BAPI_PO_CREATE1'
+  EXPORTING
+    poheader  = ls_poheader
+    poheaderx = ls_poheaderx
+  IMPORTING
+    exppurchaseorder = lv_po
+  TABLES
+    poitem   = lt_poitem
+    poitemx  = lt_poitemx
+    return   = lt_return.
+
+*---------------------------------------------------------------------*
+* STEP 6: Handle Return Messages
+*---------------------------------------------------------------------*
+
+LOOP AT lt_return INTO DATA(ls_ret).
+  WRITE: / ls_ret-type, ls_ret-message.
+  IF ls_ret-type = 'E' OR ls_ret-type = 'A'.
+    lv_error = abap_true.
+  ENDIF.
+ENDLOOP.
+
+
+*---------------------------------------------------------------------*
+* STEP 7: Commit or Error
+*---------------------------------------------------------------------*
+IF lv_error = abap_false AND lv_po IS NOT INITIAL.
+
+  "Commit PO creation in SAP
+  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+    EXPORTING
+      wait = 'X'.
+
+   UPDATE ztender_hdr
+   SET po_no = lv_po
+   WHERE tender_id = p_tender.
+
+
+
+  COMMIT WORK.
+
+  MESSAGE |PO { lv_po } created successfully| TYPE 'S'.
+
+ELSE.
+  MESSAGE 'PO creation blocked due to system validation' TYPE 'E'.
+ENDIF.
